@@ -3,13 +3,13 @@ Command line runner for the Music Recommender Simulation.
 
 This file helps you quickly run and test your recommender.
 
-You will implement the functions in recommender.py:
-- load_songs
-- score_song
-- recommend_songs
+Each profile is now validated and normalized (see src/validation.py) before
+recommendations are generated. Invalid profiles are reported and skipped so a
+single bad profile never stops the rest of the run.
 """
 
 from src.recommender import load_songs, recommend_songs
+from src.validation import ValidationError, validate_and_normalize_profile
 
 
 # Phase 4 evaluation profiles. Each entry pairs a display "name" with the
@@ -39,13 +39,48 @@ PROFILES = [
 ]
 
 
-def print_recommendations(name: str, prefs: dict, recommendations: list) -> None:
-    """Print one profile's heading, preferences, and its top recommendations."""
-    # Heading summarizing the profile we searched for
+# The validator uses the field names genre/mood, while the recommender and the
+# PROFILES above use favorite_genre/favorite_mood. These two helpers translate
+# between the two schemas so neither recommender.py nor validation.py has to
+# change. Only keys that are present are copied, so a genuinely missing field
+# is still reported as "missing" by the validator.
+_TO_VALIDATOR = {
+    "favorite_genre": "genre",
+    "favorite_mood": "mood",
+    "target_energy": "target_energy",
+    "likes_acoustic": "likes_acoustic",
+}
+
+
+def to_validator_schema(prefs: dict) -> dict:
+    """Rename recommender-style keys to the ones validate_and_normalize_profile expects."""
+    return {dst: prefs[src] for src, dst in _TO_VALIDATOR.items() if src in prefs}
+
+
+def to_recommender_schema(normalized: dict) -> dict:
+    """Rename validated keys back to the ones score_song expects."""
+    return {
+        "favorite_genre": normalized["genre"],
+        "favorite_mood": normalized["mood"],
+        "target_energy": normalized["target_energy"],
+        "likes_acoustic": normalized["likes_acoustic"],
+    }
+
+
+def print_heading(name: str) -> None:
+    """Print the profile heading and flush it, so it appears before any
+    validation log messages (which are written to stderr during validation)."""
     print()
     print("=" * 60)
     print(f"PROFILE: {name}")
-    print("=" * 60)
+    print("=" * 60, flush=True)
+
+
+def print_recommendations(prefs: dict, recommendations: list) -> None:
+    """Print one profile's preferences and its top recommendations.
+
+    The heading is printed separately by print_heading before validation runs.
+    """
     print("Profile:")
     print(f"  Favorite Genre: {prefs['favorite_genre']}")
     print(f"  Favorite Mood: {prefs['favorite_mood']}")
@@ -62,13 +97,31 @@ def print_recommendations(name: str, prefs: dict, recommendations: list) -> None
     print()
 
 
+def print_validation_error(error: ValidationError) -> None:
+    """Report that the current profile was skipped because it failed validation."""
+    print(f"  [SKIPPED] Invalid profile: {error}")
+    print()
+
+
 def main() -> None:
     songs = load_songs("data/songs.csv")  # load the catalog once, reused for every profile
 
-    # Evaluate each profile with the same k and output format
+    # Evaluate each profile with the same k and output format. Validation runs
+    # first; if it fails we report the problem and continue with the next profile.
     for profile in PROFILES:
-        recommendations = recommend_songs(profile["prefs"], songs, k=5)
-        print_recommendations(profile["name"], profile["prefs"], recommendations)
+        # Print the heading first so the user always sees which profile is being
+        # processed before any validation (log) output appears.
+        print_heading(profile["name"])
+
+        try:
+            normalized = validate_and_normalize_profile(to_validator_schema(profile["prefs"]))
+        except ValidationError as error:
+            print_validation_error(error)
+            continue
+
+        prefs = to_recommender_schema(normalized)
+        recommendations = recommend_songs(prefs, songs, k=5)
+        print_recommendations(prefs, recommendations)
 
 
 if __name__ == "__main__":
