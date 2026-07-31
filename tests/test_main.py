@@ -1,9 +1,41 @@
-"""Tests for the CLI runner's validation integration (src/main.py)."""
+"""Tests for the CLI runner (src/main.py): validation + AI-explanation integration.
+
+The Gemini call is always mocked here (via main.generate_explanation), so these
+tests never make a real API request.
+"""
+
+from unittest.mock import MagicMock
+
+import pytest
 
 from src import main
+from src.llm_service import LLMServiceError
 
 
-def test_main_runs_without_crashing_on_invalid_profile(capsys):
+def flatten(text: str) -> str:
+    """Collapse all whitespace so assertions survive textwrap line wrapping."""
+    return " ".join(text.split())
+
+
+@pytest.fixture
+def mock_ai_success(monkeypatch):
+    """Patch the LLM so it returns a fixed, easily-detectable explanation."""
+    monkeypatch.setattr(main, "generate_explanation", lambda context: "AITEXT_SENTINEL_ok")
+    return "AITEXT_SENTINEL_ok"
+
+
+@pytest.fixture
+def mock_ai_failure(monkeypatch):
+    """Patch the LLM so every call raises LLMServiceError."""
+    def boom(context):
+        raise LLMServiceError("api unavailable")
+
+    monkeypatch.setattr(main, "generate_explanation", boom)
+
+
+# --- existing behavior (now with the LLM mocked) ---------------------------
+
+def test_main_runs_without_crashing_on_invalid_profile(capsys, mock_ai_success):
     # The full PROFILES list includes an out-of-range energy (1.5) profile.
     # main() must handle it gracefully and still process the valid profiles.
     main.main()
@@ -17,7 +49,7 @@ def test_main_runs_without_crashing_on_invalid_profile(capsys):
     assert "target_energy must be between 0.0 and 1.0" in out
 
 
-def test_valid_profiles_are_not_skipped(capsys):
+def test_valid_profiles_are_not_skipped(capsys, mock_ai_success):
     # Only the single out-of-range profile should be skipped; the other four run.
     main.main()
     out = capsys.readouterr().out
@@ -49,3 +81,53 @@ def test_to_validator_schema_omits_missing_keys():
     validator_view = main.to_validator_schema(partial)
     assert "genre" not in validator_view
     assert validator_view["mood"] == "happy"
+
+
+# --- AI explanation integration --------------------------------------------
+
+def test_successful_ai_explanation_is_printed(capsys, mock_ai_success):
+    main.main()
+    out = capsys.readouterr().out
+
+    assert "AI EXPLANATION" in out
+    assert mock_ai_success in out
+    # On success, the fallback notice must NOT appear.
+    assert "showing deterministic fallback" not in out
+
+
+def test_llm_error_causes_fallback_explanation(capsys, mock_ai_failure):
+    main.main()
+    out = flatten(capsys.readouterr().out)
+
+    # The controlled fallback notice and deterministic text should appear...
+    assert "showing deterministic fallback" in out
+    assert "Top recommendation:" in out
+    # ...and the AI sentinel must be absent because generation failed.
+    assert "AITEXT_SENTINEL_ok" not in out
+
+
+def test_processing_continues_after_llm_failure(capsys, mock_ai_failure):
+    # Even though every LLM call fails, all four valid profiles must still run.
+    main.main()
+    out = flatten(capsys.readouterr().out)
+
+    # Songs from different profiles both appear -> the loop kept going.
+    assert "Voltage Rising" in out          # profile 1
+    assert "Velvet Hours" in out            # profile 3
+    # One fallback notice per valid profile (4 valid, 1 invalid).
+    assert out.count("showing deterministic fallback") == 4
+    assert out.count("[SKIPPED]") == 1
+
+
+def test_invalid_profile_skipped_before_any_gemini_call(monkeypatch, capsys):
+    # Run with ONLY the invalid profile; the LLM must never be called.
+    llm = MagicMock()
+    monkeypatch.setattr(main, "generate_explanation", llm)
+    monkeypatch.setattr(main, "PROFILES", [main.PROFILES[4]])  # 4b: energy = 1.5
+
+    main.main()
+
+    llm.assert_not_called()
+    out = capsys.readouterr().out
+    assert "[SKIPPED]" in out
+    assert "AI EXPLANATION" not in out

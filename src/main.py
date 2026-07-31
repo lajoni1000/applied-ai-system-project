@@ -8,8 +8,15 @@ recommendations are generated. Invalid profiles are reported and skipped so a
 single bad profile never stops the rest of the run.
 """
 
+import logging
+import textwrap
+
+from src.explanations import build_fallback_explanation, build_recommendation_context
+from src.llm_service import LLMServiceError, generate_explanation
 from src.recommender import load_songs, recommend_songs
 from src.validation import ValidationError, validate_and_normalize_profile
+
+logger = logging.getLogger(__name__)
 
 
 # Phase 4 evaluation profiles. Each entry pairs a display "name" with the
@@ -103,6 +110,31 @@ def print_validation_error(error: ValidationError) -> None:
     print()
 
 
+def generate_or_fallback_explanation(prefs: dict, recommendations: list) -> tuple:
+    """Build the grounded context, then ask the LLM for an explanation.
+
+    Returns (explanation_text, source) where source is "ai" if Gemini produced
+    the text, or "fallback" if the LLM failed and the deterministic explanation
+    was used instead. Never raises: an LLM failure is turned into a fallback.
+    """
+    context = build_recommendation_context(prefs, recommendations)
+    try:
+        return generate_explanation(context), "ai"
+    except LLMServiceError as error:
+        logger.warning("LLM explanation failed, using deterministic fallback: %s", error)
+        return build_fallback_explanation(prefs, recommendations), "fallback"
+
+
+def print_ai_explanation(explanation: str, source: str) -> None:
+    """Print the explanation under an AI EXPLANATION heading, wrapped for the CLI."""
+    print("AI EXPLANATION")
+    print("-" * 60)
+    if source == "fallback":
+        print("  (AI explanation unavailable - showing deterministic fallback)")
+    print(textwrap.fill(explanation, width=76, initial_indent="  ", subsequent_indent="  "))
+    print()
+
+
 def main() -> None:
     songs = load_songs("data/songs.csv")  # load the catalog once, reused for every profile
 
@@ -122,6 +154,11 @@ def main() -> None:
         prefs = to_recommender_schema(normalized)
         recommendations = recommend_songs(prefs, songs, k=5)
         print_recommendations(prefs, recommendations)
+
+        # Generate a friendly AI explanation, falling back to the deterministic
+        # one if the LLM is unavailable. Either way, the run continues.
+        explanation, source = generate_or_fallback_explanation(prefs, recommendations)
+        print_ai_explanation(explanation, source)
 
 
 if __name__ == "__main__":
