@@ -4,6 +4,7 @@ The Gemini call is always mocked here (via main.generate_explanation), so these
 tests never make a real API request.
 """
 
+import re
 from unittest.mock import MagicMock
 
 import pytest
@@ -19,8 +20,17 @@ def flatten(text: str) -> str:
 
 @pytest.fixture
 def mock_ai_success(monkeypatch):
-    """Patch the LLM so it returns a fixed, easily-detectable explanation."""
-    monkeypatch.setattr(main, "generate_explanation", lambda context: "AITEXT_SENTINEL_ok")
+    """Patch the LLM to return a guardrail-valid explanation for each profile.
+
+    It names the top recommendation (read from the context) so the guardrail
+    accepts it, and embeds a sentinel token we can assert on.
+    """
+    def fake(context):
+        match = re.search(r'"([^"]+)"', context)  # first quoted title = top pick
+        top_title = match.group(1) if match else "your top pick"
+        return f"AITEXT_SENTINEL_ok {top_title} is a wonderful match for your mood and energy."
+
+    monkeypatch.setattr(main, "generate_explanation", fake)
     return "AITEXT_SENTINEL_ok"
 
 
@@ -85,14 +95,32 @@ def test_to_validator_schema_omits_missing_keys():
 
 # --- AI explanation integration --------------------------------------------
 
-def test_successful_ai_explanation_is_printed(capsys, mock_ai_success):
+def test_valid_ai_output_is_displayed(capsys, mock_ai_success):
     main.main()
     out = capsys.readouterr().out
 
     assert "AI EXPLANATION" in out
     assert mock_ai_success in out
-    # On success, the fallback notice must NOT appear.
+    # On success, no fallback notice of either kind must appear.
     assert "showing deterministic fallback" not in out
+    assert "guardrail" not in out
+
+
+def test_rejected_ai_output_triggers_fallback(monkeypatch, capsys):
+    # This text has placeholders and never names any real top title -> rejected
+    # by the guardrail for every profile, so all four fall back deterministically.
+    monkeypatch.setattr(
+        main, "generate_explanation", lambda context: "This pick is Song A and Track 1 for you."
+    )
+    main.main()
+    out = flatten(capsys.readouterr().out)
+
+    # Guardrail notice shown once per valid profile, and deterministic text used.
+    assert out.count("failed the grounding guardrail") == 4
+    assert "Top recommendation:" in out
+    # The rejected AI text must not be displayed.
+    assert "Song A" not in out
+    assert out.count("[SKIPPED]") == 1
 
 
 def test_llm_error_causes_fallback_explanation(capsys, mock_ai_failure):

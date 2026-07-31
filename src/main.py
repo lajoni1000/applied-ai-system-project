@@ -12,6 +12,7 @@ import logging
 import textwrap
 
 from src.explanations import build_fallback_explanation, build_recommendation_context
+from src.guardrails import validate_explanation
 from src.llm_service import LLMServiceError, generate_explanation
 from src.recommender import load_songs, recommend_songs
 from src.validation import ValidationError, validate_and_normalize_profile
@@ -110,27 +111,45 @@ def print_validation_error(error: ValidationError) -> None:
     print()
 
 
-def generate_or_fallback_explanation(prefs: dict, recommendations: list) -> tuple:
-    """Build the grounded context, then ask the LLM for an explanation.
+# Short controlled notices explaining why a deterministic fallback is shown.
+_FALLBACK_NOTICES = {
+    "fallback_error": "  (AI explanation unavailable - showing deterministic fallback)",
+    "fallback_rejected": "  (AI explanation failed the grounding guardrail - showing deterministic fallback)",
+}
 
-    Returns (explanation_text, source) where source is "ai" if Gemini produced
-    the text, or "fallback" if the LLM failed and the deterministic explanation
-    was used instead. Never raises: an LLM failure is turned into a fallback.
+
+def generate_or_fallback_explanation(prefs: dict, recommendations: list) -> tuple:
+    """Build the grounded context, generate an explanation, and guard it.
+
+    Returns (explanation_text, source) where source is one of:
+        "ai"                - Gemini produced text that passed the guardrail
+        "fallback_error"    - the LLM was unavailable / failed
+        "fallback_rejected" - the LLM text was rejected by the guardrail
+    Never raises: any problem is turned into a deterministic fallback.
     """
     context = build_recommendation_context(prefs, recommendations)
+
     try:
-        return generate_explanation(context), "ai"
+        candidate = generate_explanation(context)
     except LLMServiceError as error:
         logger.warning("LLM explanation failed, using deterministic fallback: %s", error)
-        return build_fallback_explanation(prefs, recommendations), "fallback"
+        return build_fallback_explanation(prefs, recommendations), "fallback_error"
+
+    is_valid, issues = validate_explanation(candidate, recommendations)
+    if not is_valid:
+        logger.warning("LLM explanation rejected by guardrail: %s", "; ".join(issues))
+        return build_fallback_explanation(prefs, recommendations), "fallback_rejected"
+
+    return candidate, "ai"
 
 
 def print_ai_explanation(explanation: str, source: str) -> None:
     """Print the explanation under an AI EXPLANATION heading, wrapped for the CLI."""
     print("AI EXPLANATION")
     print("-" * 60)
-    if source == "fallback":
-        print("  (AI explanation unavailable - showing deterministic fallback)")
+    notice = _FALLBACK_NOTICES.get(source)
+    if notice:
+        print(notice)
     print(textwrap.fill(explanation, width=76, initial_indent="  ", subsequent_indent="  "))
     print()
 
