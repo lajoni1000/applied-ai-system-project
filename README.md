@@ -1,363 +1,386 @@
-# 🎵 Music Recommender Simulation
+# 🎵 Applied AI Music Recommender
 
-## Project Summary
+An AI-augmented, content-based music recommender that pairs a **deterministic recommendation engine** with a **Google Gemini explanation layer** — wrapped in validation, grounding, guardrails, and a deterministic fallback so the system stays reliable even when the LLM does not.
 
-In this project you will build and explain a small music recommender system.
-
-Your goal is to:
-
-- Represent songs and a user "taste profile" as data
-- Design a scoring rule that turns that data into recommendations
-- Evaluate what your system gets right and wrong
-- Reflect on how this mirrors real world AI recommenders
-
-Replace this paragraph with your own summary of what your version does.
+The system recommends songs from a curated catalog, then explains *why* each recommendation fits the listener. The explanations are the interesting part: an LLM can write warm, natural language, but it can also hallucinate. **Trustworthy explanations matter** because a confident-sounding but wrong explanation ("we picked this because it's your favorite jazz track" — when it isn't) erodes user trust faster than no explanation at all. This project treats the LLM as a component to be *verified*, not trusted: every generated explanation must be grounded in the actual retrieved songs, and anything that fails the check is transparently replaced by a deterministic explanation built from the scoring logic itself.
 
 ---
 
-## How The System Works
+## 2. Original Project
 
-Real-world recommenders like Spotify and TikTok combine **collaborative filtering** (learning from what similar users play, like, and skip) with **content-based filtering** (matching the measurable attributes of the songs themselves), then layer on context like time of day and listening history. My simulation focuses on the **content-based** half: it has no other users' data, so instead of asking "who is like you?" it asks "what is like the music you already enjoy?" It prioritizes matching the *vibe* of a song — its energy and emotional tone — over surface labels, and it aims to stay simple, transparent, and explainable so every recommendation can be traced back to the numbers that produced it.
+This system extends **Project 3: Music Recommender Simulation**.
 
-**Features each `Song` uses:**
+The original Project 3 was a command-line, content-based recommender that **loaded songs from a CSV catalog**, **scored each song using genre, mood, energy similarity, and acoustic preference**, and **ranked and displayed the top content-based recommendations** with a short, deterministic explanation of the points each song earned.
 
-- `genre` (categorical) and `mood` (categorical)
-- `energy` (numeric, 0–1) — the main "vibe" signal
-- `acousticness` (numeric, 0–1) — used when the user likes acoustic music
-- `id`, `title`, `artist` are kept for display/identity but not used in scoring
-- `valence`, `danceability`, `tempo_bpm` are stored in the data but not scored in this version
-
-**What the `UserProfile` stores:**
-
-- `favorite_genre` — the genre the user prefers
-- `favorite_mood` — the mood the user prefers
-- `target_energy` — the energy level (0–1) the user is aiming for
-- `likes_acoustic` — a flag for whether the user favors acoustic songs
-
-**How the `Recommender` scores a song:** it awards **flat points** for each thing a song gets right, then adds them into one total score:
-
-- **+2.0** for a genre match (exact match on `favorite_genre`)
-- **+1.0** for a mood match (exact match on `favorite_mood`)
-- **energy similarity** (up to +1.0), computed as `1 − |target_energy − song.energy|`, so the closer the energy, the more points
-- **+ acoustic bonus** when `likes_acoustic` is true and the song is highly acoustic
-
-The point values are deliberate: genre counts twice as much as mood, and energy acts as a tie-breaker. Every point awarded is also recorded as a plain-language reason, so each recommendation can be explained back to the user.
-
-**How songs are chosen:** every song in the catalog is scored, the list is sorted by total score descending, and the top-N are returned as the recommendations.
-
-### Data Flow
-
-```
-INPUT                    PROCESS                         OUTPUT
-─────                    ───────                         ──────
-User Prefs      ┐        for each song:                  1. sort by score (desc)
-(genre, mood,   ├──────►   score_song(prefs, song)  ───► 2. slice top K
- energy,        │            → (score, reasons)          3. return
- likes_acoustic)│                                           [(song, score, reasons)]
-Song Catalog    ┘        collect all scored songs
-(songs.csv)
-```
-
-Each stage is one function: `load_songs` reads the CSV (no scoring), `score_song` judges a single song in isolation and returns its points plus the reasons for them, and `recommend_songs` runs the loop, sorts, and slices the top K.
-
-### Algorithm Recipe
-
-For each song, `score_song` starts at `score = 0` and an empty `reasons` list, then:
-
-1. **Genre match** — if `song.genre == user.favorite_genre`, add **+2.0** and log `"+2.0 genre match (<genre>)"`.
-2. **Mood match** — if `song.mood == user.favorite_mood`, add **+1.0** and log `"+1.0 mood match (<mood>)"`.
-3. **Energy similarity** — add `1.0 - abs(user.target_energy - song.energy)` (a value from 0 to 1, higher when energies are close) and log `"+X.XX energy match"`.
-4. **Acoustic bonus** — if `user.likes_acoustic` is `True` and `song.acousticness > 0.6`, add **+0.5** and log `"+0.5 acoustic bonus"`.
-5. Return `(score, reasons)`.
-
-`recommend_songs` then scores every song, **sorts by total score descending**, and returns the **top K** (default 5). Ties keep catalog order (Python's sort is stable).
-
-**Why these weights:** the point values encode priorities. Genre is worth twice as much as mood (2.0 vs 1.0), so genre is the strongest signal; energy similarity (max 1.0) acts mainly as a tie-breaker between songs that already match on genre; the acoustic bonus is a small nudge, applied only when the user asks for it.
-
-### Potential Biases
-
-- **Genre over-prioritization.** Because genre is the heaviest weight, the system can bury a song that perfectly matches the user's mood and energy just because its genre label differs. A "happy, high-energy" fan might never see a great `indie pop` track because they asked for `pop`.
-- **Brittle exact-match labels.** Genre and mood use exact string matching, so `"indie pop"` never matches `"pop"` and `"uplifting"` never matches `"happy"`, even when the songs are musically very similar. Near-misses score zero on those features.
-- **Popular-genre echo chamber.** The system only ever reinforces the one genre the user named; it can never surface an adjacent or new genre they might enjoy, which narrows discovery over time.
-- **Limited feature use.** `valence`, `danceability`, and `tempo` are ignored in scoring, so two songs with identical genre/mood/energy are treated as interchangeable even if one is far more danceable or emotionally brighter than the other.
+**Project 4** keeps that entire pipeline unchanged and builds an *Applied AI System* around it: it validates and normalizes user input, retrieves the top songs as grounded context for a Large Language Model, uses Gemini to generate friendly explanations, guards those explanations against hallucination, and falls back to the original deterministic explanations whenever the LLM is unavailable or its output fails validation. A separate evaluation harness verifies the whole chain without spending API calls.
 
 ---
 
-## Getting Started
+## 3. New Features
 
-### Setup
+Everything below is implemented and tested in this repository:
 
-1. Create a virtual environment (optional but recommended):
+- **Input validation & normalization** (`src/validation.py`) — required fields, type checks, `target_energy` restricted to `0.0–1.0` (rejects NaN/∞ and out-of-range), genre/mood trimmed and lowercased; returns a normalized copy without mutating the input.
+- **Gemini explanation generation** (`src/llm_service.py`) — uses the Google Gen AI SDK (`google-genai`), loads `GEMINI_API_KEY` from `.env`, and exposes a single `generate_explanation(context)` function.
+- **Grounding** (`src/explanations.py`) — builds a plain-text context containing *only* the user's preferences and the actually-retrieved songs, so the LLM has no room to invent facts.
+- **Output guardrails** (`src/guardrails.py`) — a lightweight, deterministic check that rejects empty output, over-long output (>180 words), placeholder text, quoted titles that were never retrieved (hallucination), and any explanation that fails to name the top recommendation.
+- **Deterministic fallback** (`src/explanations.py`) — a grounded explanation built directly from the scoring reasons, guaranteed to be available with no API key.
+- **Error handling** (`src/main.py`) — an LLM failure or a rejected explanation is caught, logged, and transparently replaced by the fallback; the run continues.
+- **Automated testing** (`tests/`) — 61 pytest tests across validation, recommender, explanations, LLM service (mocked), guardrails, and CLI integration.
+- **Deterministic evaluation harness** (`evaluate.py`) — 7 fixed cases that exercise the full pipeline and print a pass/fail summary **without making real Gemini calls**.
 
-   ```bash
-   python -m venv .venv
-   source .venv/bin/activate      # Mac or Linux
-   .venv\Scripts\activate         # Windows
+---
 
-2. Install dependencies
+## 4. Architecture Overview
 
-```bash
+```mermaid
+flowchart TD
+    %% ===== INPUT LAYER =====
+    subgraph INPUT["🎧 Input Layer"]
+        A["User Preferences<br/>(genre, mood, energy, likes_acoustic)"]
+        B{"Input Validation<br/>required fields · numeric ranges 0–1"}
+        ERR["⛔ Validation Error Message<br/>reject invalid input (e.g. energy = 1.5)"]
+        C["User Profile Normalization<br/>lowercase · trim · standardize values"]
+        A --> B
+        B -- "invalid input" --> ERR
+        B -- "valid input" --> C
+    end
+
+    %% ===== RETRIEVAL / RAG =====
+    subgraph RETRIEVAL["🔎 Retrieval & Ranking (RAG Retriever)"]
+        DB[("Song Catalog<br/>data/songs.csv")]
+        D["Retrieval & Scoring Engine<br/>score_song(): genre · mood · energy · acoustic"]
+        E["Ranking<br/>sort by score (desc)"]
+        F["Top-K Selection<br/>k = 5"]
+        DB --> D --> E --> F
+    end
+
+    C --> D
+
+    %% ===== EXPLANATION / LLM =====
+    subgraph EXPLAIN["🤖 Explanation Generation (RAG + Guardrails)"]
+        G["Build LLM Context<br/>retrieved song facts only"]
+        H["LLM Explanation Generator<br/>Configured LLM API"]
+        I{"Explanation Guardrail<br/>grounded? · non-empty? · no hallucinated attributes?"}
+        FB["Deterministic Fallback<br/>reasons from score_song()"]
+        G --> H
+        H -- "successful response" --> I
+        H -- "API failure / unavailable" --> FB
+        I -- "invalid / ungrounded" --> FB
+    end
+
+    F --> G
+    F -. "reasons available for fallback" .-> FB
+
+    %% ===== OUTPUT =====
+    I -- "valid & grounded" --> OUT["✅ Final Recommendation Output<br/>Top-K songs + explanation"]
+    FB --> OUT
+
+    %% ===== LOGGING (cross-cutting) =====
+    LOG["📝 Logging<br/>load · validation · retrieval · generation · guardrail · fallback"]
+    B -.-> LOG
+    D -.-> LOG
+    F -.-> LOG
+    H -.-> LOG
+    I -.-> LOG
+    FB -.-> LOG
+
+    %% ===== EVALUATION (reliability harness) =====
+    EVAL["🧪 Evaluation Script<br/>evaluate.py · fixed profiles · pass/fail summary"]
+    EVAL -. "verifies input validation" .-> B
+    EVAL -. "verifies recommendation consistency" .-> D
+    EVAL -. "verifies guardrail behavior" .-> I
+    EVAL -. "verifies fallback behavior" .-> FB
+
+    %% ===== STYLING =====
+    classDef input fill:#e3f2fd,stroke:#1565c0,color:#0d1b2a;
+    classDef retrieval fill:#e8f5e9,stroke:#2e7d32,color:#0d1b2a;
+    classDef llm fill:#fff3e0,stroke:#ef6c00,color:#0d1b2a;
+    classDef guard fill:#fce4ec,stroke:#c2185b,color:#0d1b2a;
+    classDef fallback fill:#f3e5f5,stroke:#6a1b9a,color:#0d1b2a;
+    classDef output fill:#e0f7fa,stroke:#00838f,color:#0d1b2a;
+    classDef ops fill:#eceff1,stroke:#455a64,color:#0d1b2a;
+    classDef store fill:#fffde7,stroke:#f9a825,color:#0d1b2a;
+    classDef error fill:#ffebee,stroke:#c62828,color:#0d1b2a;
+
+    class A,C input;
+    class B input;
+    class ERR error;
+    class D,E,F retrieval;
+    class G,H llm;
+    class I guard;
+    class FB fallback;
+    class OUT output;
+    class LOG,EVAL ops;
+    class DB store;
+```
+
+**System flow in plain English:**
+
+```
+User profile
+  → validation (reject bad input early)
+  → recommendation scoring (genre, mood, energy, acoustic)
+  → grounded context (only the retrieved songs' real facts)
+  → Gemini explanation (friendly, natural language)
+  → guardrail (is it grounded, non-empty, and does it name the top pick?)
+  → AI explanation   (if valid)
+     — or —
+     deterministic fallback   (if the LLM failed or the guardrail rejected it)
+```
+
+`evaluate.py` validates this pipeline **separately and independently**. It exercises validation, scoring, grounding, the guardrail, and the fallback using fixed cases and simulated LLM behavior, so it is reproducible and **never makes a real Gemini API call**.
+
+---
+
+## 5. Project Structure
+
+```
+applied-ai-system-project/
+├── data/
+│   └── songs.csv              # 20-song catalog (the knowledge source)
+├── diagrams/
+│   └── architecture.mmd       # Mermaid source for the diagram above
+├── src/
+│   ├── main.py                # CLI runner + orchestration (generate → guardrail → fallback)
+│   ├── recommender.py         # Project 3 core: load_songs, score_song, recommend_songs
+│   ├── validation.py          # validate_and_normalize_profile + ValidationError
+│   ├── explanations.py        # build_recommendation_context + build_fallback_explanation
+│   ├── llm_service.py         # generate_explanation (Gemini) + LLMServiceError
+│   └── guardrails.py          # validate_explanation (deterministic grounding check)
+├── tests/
+│   ├── test_recommender.py
+│   ├── test_validation.py
+│   ├── test_explanations.py
+│   ├── test_llm_service.py    # Gemini client fully mocked
+│   ├── test_guardrails.py
+│   ├── test_main.py           # CLI integration, LLM mocked
+│   └── test_evaluate.py
+├── evaluate.py                # deterministic evaluation harness (no real API calls)
+├── model_card.md              # responsible-AI model card
+├── requirements.txt
+├── .env.example               # template for GEMINI_API_KEY (no real key)
+└── README.md
+```
+
+---
+
+## 6. Setup (Windows PowerShell)
+
+```powershell
+git clone <your-repo-url>
+cd applied-ai-system-project
+
+python -m venv .venv
+.venv\Scripts\Activate.ps1
+
 pip install -r requirements.txt
 ```
 
-3. Run the app (from the project root):
+Create your local `.env` from the template and add your key:
 
-```bash
+```powershell
+Copy-Item .env.example .env
+```
+
+Then edit `.env` so it contains your real key:
+
+```
+GEMINI_API_KEY=your_api_key_here
+```
+
+> ⚠️ **Never commit your real API key.** `.env` is already listed in `.gitignore`; only `.env.example` (with the placeholder value) is tracked.
+
+---
+
+## 7. How to Run
+
+From the project root:
+
+```powershell
 python -m src.main
 ```
 
-### Running Tests
+This runs the predefined evaluation profiles, printing each profile's recommendations followed by an **AI EXPLANATION** section.
 
-Run the starter tests with:
+If Gemini is **unavailable** — missing/invalid API key, network error, or an explanation that fails the guardrail — the system automatically prints a short controlled notice and shows the **deterministic fallback explanation** instead. The program never crashes on an LLM failure and always produces a recommendation.
 
-```bash
-pytest
+---
+
+## 8. Sample End-to-End Interactions
+
+> The explanation text shown below is the **deterministic fallback** — genuine, reproducible output from `build_fallback_explanation`. When a valid Gemini key/model is configured, an AI-generated explanation replaces it; the recommendations themselves are identical either way.
+
+### Profile A — EDM / uplifting / 0.95 (not acoustic)
+
+| Rank | Song | Artist | Score |
+|-----:|------|--------|------:|
+| 1 | Voltage Rising | Pulsewave | 4.00 |
+| 2 | Gym Hero | Max Pulse | 0.98 |
+| 3 | Iron Verdict | Ashen Crown | 0.97 |
+| 4 | Storm Runner | Voltline | 0.96 |
+| 5 | Midnight Circuit | Bassline Ghost | 0.95 |
+
+```
+Top recommendation: "Voltage Rising" by Pulsewave (score 4.00). It fits because its
+genre (edm) matches your favorite genre, its mood (uplifting) matches your preferred
+mood, its energy (0.95) is close to your target energy (0.95). Other strong matches
+include "Gym Hero" by Max Pulse, "Iron Verdict" by Ashen Crown.
 ```
 
-You can add more tests in `tests/test_recommender.py`.
+### Profile B — Lofi / chill / 0.35 (acoustic)
+
+| Rank | Song | Artist | Score |
+|-----:|------|--------|------:|
+| 1 | Library Rain | Paper Lanterns | 4.50 |
+| 2 | Midnight Coding | LoRoom | 4.43 |
+| 3 | Focus Flow | LoRoom | 3.45 |
+| 4 | Spacewalk Thoughts | Orbit Bloom | 2.43 |
+| 5 | Coffee Shop Stories | Slow Stereo | 1.48 |
+
+```
+Top recommendation: "Library Rain" by Paper Lanterns (score 4.50). It fits because its
+genre (lofi) matches your favorite genre, its mood (chill) matches your preferred mood,
+its energy (0.35) is close to your target energy (0.35), and it is acoustic, which you
+prefer. Other strong matches include "Midnight Coding" by LoRoom, "Focus Flow" by LoRoom.
+```
+
+### Profile C — R&B / romantic / 0.48 (not acoustic)
+
+| Rank | Song | Artist | Score |
+|-----:|------|--------|------:|
+| 1 | Velvet Hours | Silk Avenue | 4.00 |
+| 2 | Dust and Diesel | Red Clay Road | 0.96 |
+| 3 | Midnight Coding | LoRoom | 0.94 |
+| 4 | Focus Flow | LoRoom | 0.92 |
+| 5 | Island Time | Palm Riddim | 0.92 |
+
+```
+Top recommendation: "Velvet Hours" by Silk Avenue (score 4.00). It fits because its
+genre (r&b) matches your favorite genre, its mood (romantic) matches your preferred
+mood, its energy (0.48) is close to your target energy (0.48). Other strong matches
+include "Dust and Diesel" by Red Clay Road, "Midnight Coding" by LoRoom.
+```
 
 ---
 
-## Sample Recommendation Output
+## 9. Reliability and Guardrail Behavior
 
-.venv) PS C:\Users\hanny\OneDrive\Documentos\Foundations of AI Engineering\ai110-module3show-musicrecommendersimulation-starter> python -m src.main                                                    
+These behaviors are reproducible and covered by the evaluation harness (`python evaluate.py`).
 
-============================================================
-PROFILE: 1. High-energy (aligned preferences)
-============================================================
-Profile:
-  Favorite Genre: edm
-  Favorite Mood: uplifting
-  Target Energy: 0.95
-  Likes Acoustic: NO
+### A. Invalid input — `target_energy = 1.5`
 
-  1. Voltage Rising - Pulsewave
-     Score: 4.00
-       - +2.0 genre match (edm)
-       - +1.0 mood match (uplifting)
-       - +1.00 energy match
+Validation runs **before** any Gemini call, so an out-of-range energy is rejected up front:
 
-  2. Gym Hero - Max Pulse
-     Score: 0.98
-       - +0.98 energy match
+```
+[SKIPPED] Invalid profile: target_energy must be between 0.0 and 1.0, got 1.5
+```
 
-  3. Iron Verdict - Ashen Crown
-     Score: 0.97
-       - +0.97 energy match
+The profile is skipped, the LLM is never invoked for it, and the run continues.
 
-  4. Storm Runner - Voltline
-     Score: 0.96
-       - +0.96 energy match
+### B. Hallucinated title — `"Imaginary Anthem"`
 
-  5. Midnight Circuit - Bassline Ghost
-     Score: 0.95
-       - +0.95 energy match
+If a generated explanation names a quoted song that was **not** among the retrieved recommendations, the guardrail rejects it. From the evaluation harness:
 
+```
+[PASS] Guardrail rejects hallucinated title
+       expected: guardrail rejects a hallucinated quoted title
+       actual:   is_valid=False; issues=["mentions a song not in the recommendations: 'Imaginary Anthem'"]
+```
 
-============================================================
-PROFILE: 2. Low-energy / chill (with acoustic bonus)
-============================================================
-Profile:
-  Favorite Genre: lofi
-  Favorite Mood: chill
-  Target Energy: 0.35
-  Likes Acoustic: YES
+The rejected text is discarded and the deterministic fallback is shown instead.
 
-  1. Library Rain - Paper Lanterns
-     Score: 4.50
-       - +2.0 genre match (lofi)
-       - +1.0 mood match (chill)
-       - +1.00 energy match
-       - +0.5 acoustic bonus
+### C. Simulated Gemini outage
 
-  2. Midnight Coding - LoRoom
-     Score: 4.43
-       - +2.0 genre match (lofi)
-       - +1.0 mood match (chill)
-       - +0.93 energy match
-       - +0.5 acoustic bonus
+When the LLM raises an error, the system catches it and uses the deterministic fallback. From the evaluation harness:
 
-  3. Focus Flow - LoRoom
-     Score: 3.45
-       - +2.0 genre match (lofi)
-       - +0.95 energy match
-       - +0.5 acoustic bonus
-
-  4. Spacewalk Thoughts - Orbit Bloom
-     Score: 2.43
-       - +1.0 mood match (chill)
-       - +0.93 energy match
-       - +0.5 acoustic bonus
-
-  5. Coffee Shop Stories - Slow Stereo
-     Score: 1.48
-       - +0.98 energy match
-       - +0.5 acoustic bonus
-
-
-============================================================
-PROFILE: 3. Different genre and mood (r&b / romantic)
-============================================================
-Profile:
-  Favorite Genre: r&b
-  Favorite Mood: romantic
-  Target Energy: 0.48
-  Likes Acoustic: NO
-
-  1. Velvet Hours - Silk Avenue
-     Score: 4.00
-       - +2.0 genre match (r&b)
-       - +1.0 mood match (romantic)
-       - +1.00 energy match
-
-  2. Dust and Diesel - Red Clay Road
-     Score: 0.96
-       - +0.96 energy match
-
-  3. Midnight Coding - LoRoom
-     Score: 0.94
-       - +0.94 energy match
-
-  4. Focus Flow - LoRoom
-     Score: 0.92
-       - +0.92 energy match
-
-  5. Island Time - Palm Riddim
-     Score: 0.92
-       - +0.92 energy match
-
-
-============================================================
-PROFILE: 4a. ADVERSARIAL: conflicting genre vs mood (metal / happy)
-============================================================
-Profile:
-  Favorite Genre: metal
-  Favorite Mood: happy
-  Target Energy: 0.9
-  Likes Acoustic: NO
-
-  1. Iron Verdict - Ashen Crown
-     Score: 2.92
-       - +2.0 genre match (metal)
-       - +0.92 energy match
-
-  2. Sunrise City - Neon Echo
-     Score: 1.92
-       - +1.0 mood match (happy)
-       - +0.92 energy match
-
-  3. Rooftop Lights - Indigo Parade
-     Score: 1.86
-       - +1.0 mood match (happy)
-       - +0.86 energy match
-
-  4. Midnight Circuit - Bassline Ghost
-     Score: 1.00
-       - +1.00 energy match
-
-  5. Storm Runner - Voltline
-     Score: 0.99
-       - +0.99 energy match
-
-
-============================================================
-PROFILE: 4b. EDGE CASE: out-of-range target_energy (1.5)
-============================================================
-Profile:
-  Favorite Genre: pop
-  Favorite Mood: happy
-  Target Energy: 1.5
-  Likes Acoustic: NO
-
-  1. Sunrise City - Neon Echo
-     Score: 3.32
-       - +2.0 genre match (pop)
-       - +1.0 mood match (happy)
-       - +0.32 energy match
-
-  2. Gym Hero - Max Pulse
-     Score: 2.43
-       - +2.0 genre match (pop)
-       - +0.43 energy match
-
-  3. Rooftop Lights - Indigo Parade
-     Score: 1.26
-       - +1.0 mood match (happy)
-       - +0.26 energy match
-
-  4. Iron Verdict - Ashen Crown
-     Score: 0.48
-       - +0.48 energy match
-
-  5. Voltage Rising - Pulsewave
-     Score: 0.45
-       - +0.45 energy match
----
-
-## Experiments You Tried
-
-### Experiment 1: Weight Shift
-
-To evaluate how sensitive the recommender was to different scoring weights, I temporarily changed the scoring algorithm in `recommender.py`.
-
-**Original weights:**
-- Genre match: +2.0
-- Mood match: +1.0
-- Energy similarity: up to +1.0
-- Acoustic bonus: +0.5
-
-**Experimental weights:**
-- Genre match: +1.0
-- Mood match: +1.0
-- Energy similarity: up to +2.0
-- Acoustic bonus: +0.5
-
-#### Results
-
-The experiment showed that increasing the importance of energy made songs with similar energy levels much more competitive, even if they did not match the requested genre.
-
-For example, in the **High-Energy EDM** profile, the top recommendation ("Voltage Rising") remained the same because it perfectly matched the user's genre, mood, and energy preferences. However, songs that matched only the target energy nearly doubled their scores, moving much closer to the top recommendation.
-
-The biggest change occurred in the **Metal / Happy** adversarial profile. Before the experiment, the metal song ranked clearly above the happy pop song because genre was weighted twice as much as mood. After reducing the genre weight and increasing the energy weight, both songs received the same overall score (2.84), showing that the recommender became much more sensitive to energy similarity.
-
-### Behavior for Different User Types
-
-The recommender behaved differently depending on the user's preferences:
-
-- **High-Energy EDM:** Recommended energetic EDM songs first, with other high-energy songs following.
-- **Low-Energy Lofi:** Favored calm, acoustic songs that matched the requested genre and mood.
-- **R&B Romantic:** Found one perfect match, then recommended songs with similar energy because there were fewer songs matching both the requested genre and mood.
-- **Conflicting Metal/Happy:** Demonstrated how changing the scoring weights affected the balance between genre and mood.
-- **Edge Case (Energy = 1.5):** The recommender still produced recommendations even though the energy value was outside the expected range (0.0–1.0), revealing that the current implementation does not validate user input.
-
-### Conclusion
-
-The experiment demonstrated that the recommender is sensitive to feature weights. Increasing the influence of energy changed the ranking of several songs and made energy-only matches more competitive. However, the changes made the recommendations different rather than clearly more accurate. This experiment helped illustrate how weighting decisions affect recommendation behavior.
+```
+[PASS] Simulated LLM failure -> fallback
+       expected: LLM outage -> valid deterministic fallback is used
+       actual:   source=fallback; fallback_non_empty=True; guardrail_valid=True
+```
 
 ---
 
-## Limitations and Risks
+## 10. Testing
 
-## Limitations and Risks
+Run the unit/integration tests:
 
-- Recommendations are limited to the songs available in the dataset.
-- The model only considers genre, mood, energy, and acoustic preference.
-- Some genres and mood combinations are underrepresented.
-- The scoring system gives more weight to genre, which may overpower other user preferences in some cases.
-- The current implementation does not validate user inputs (for example, an energy value outside the expected 0.0–1.0 range), which may produce unreliable recommendations.
+```powershell
+python -m pytest -v
+```
+
+Run the deterministic evaluation harness:
+
+```powershell
+python evaluate.py
+```
+
+**Verified results:**
+
+```
+61 passed
+```
+
+```
+Evaluation Summary
+Passed: 7
+Failed: 0
+Score: 7/7 (100.0%)
+```
+
+**What the tests cover:**
+
+- `test_recommender.py` — the Project 3 scoring/ranking behavior.
+- `test_validation.py` — required fields, type checks, energy range (including NaN/∞ and boundaries), normalization, and input immutability.
+- `test_explanations.py` — the grounded context and the deterministic fallback (including that they never leak un-retrieved songs and never mutate inputs).
+- `test_llm_service.py` — the Gemini wrapper with the client **fully mocked**: empty context, missing key, success, empty/whitespace/`None` responses, and SDK-exception conversion.
+- `test_guardrails.py` — empty, too-long, placeholder, hallucinated-title, missing-top-title, and case-insensitive matching.
+- `test_main.py` — CLI integration with the LLM mocked: valid AI output shown, rejected output → fallback, LLM error → fallback, invalid profiles skipped before any Gemini call.
+- `test_evaluate.py` — all cases pass, correct summary counts, exit codes 0/1, and that **no Gemini call is made**.
 
 ---
 
-## Reflection
+## 11. Design Decisions and Trade-offs
 
-Read and complete `model_card.md`:
+- **Deterministic recommender + LLM explanation layer.** Recommendations come from transparent, reproducible scoring. The LLM only writes the *explanation* — it never changes *what* is recommended. This keeps the core auditable while still gaining natural language.
+- **Grounding on retrieved recommendations only.** The LLM sees just the user's preferences and the actually-retrieved songs. It cannot cite tracks that were never selected, which sharply limits hallucination.
+- **Deterministic fallback favors reliability.** The system is designed to *always* return an explanation. If anything about the LLM path fails, the deterministic explanation — built from the same scoring reasons — takes over. Availability beats eloquence.
+- **Lightweight, title-based guardrail.** The guardrail is cheap and deterministic (word count, placeholders, quoted-title matching, top-title mention). It is not semantic fact-checking, but it reliably catches the most damaging failure — inventing songs — without extra API cost or nondeterminism.
+- **Manually curated dataset.** A small, hand-built 20-song CSV keeps the project reproducible and easy to reason about; every recommendation can be traced back to concrete rows.
+- **Evaluation avoids real API calls.** `evaluate.py` simulates LLM success/failure deterministically, so it runs for free, offline, and identically every time — a reliability tool, not a billing surprise.
 
-[**Model Card**](model_card.md)
+---
 
-Write 1 to 2 paragraphs here about what you learned:
+## 12. Limitations and Future Improvements
 
-- about how recommenders turn data into predictions
-- about where bias or unfairness could show up in systems like this
+**Limitations**
 
+- **Small dataset** — only 20 songs, so some genre/mood combinations have few matches.
+- **Fixed scoring weights** — genre is weighted highest and cannot be tuned per user.
+- **No collaborative filtering** — it cannot learn from what similar listeners enjoy.
+- **No user history** — each request is independent; there's no personalization over time.
+- **Title-based guardrail only** — it checks grounding structurally, not the semantic truth of every claim.
+- **Gemini availability / rate limits** — live AI explanations depend on the API being reachable and within quota.
 
+**Future work**
 
+- A **larger, richer dataset** with more songs and features.
+- **Stronger semantic guardrails** that verify claims against song attributes, not just titles.
+- **Recommendation diversity** so results aren't near-duplicates of one another.
+- A **UI or web app** front end (a Streamlit dependency is already available).
+- A **broader evaluation dataset** with more profiles and adversarial cases.
+
+---
+
+## 13. Project Reflection
+
+*(A fuller reflection lives in [`model_card.md`](model_card.md).)*
+
+The core lesson of this project is that **AI reliability comes mostly from the deterministic engineering around the model**, not from the model itself. Validation stops bad input before it ever reaches the LLM; grounding constrains what the model can say; the guardrail verifies the output instead of trusting it; and the deterministic fallback guarantees the system still works when the model doesn't. Together these turn an unpredictable component into a dependable feature.
+
+---
+
+## What This Project Says About Me as an AI Engineer
+
+I build **end-to-end AI systems**, not just prompts. In this project I took a deterministic recommender and layered an LLM onto it responsibly — designing the data flow, the failure paths, and the tests together rather than as an afterthought. I care about **verifying AI output instead of trusting it blindly**: every generated explanation has to prove it's grounded in real data before a user sees it, and anything that can't is replaced automatically. I deliberately **test failure conditions** — invalid input, hallucinated titles, and full LLM outages — because a system's reliability is defined by how it behaves when things go wrong. Most of all, I'm comfortable **balancing AI capability with deterministic safeguards**, using the model where it genuinely helps (natural-language explanation) while keeping the trustworthy core reproducible, auditable, and always available.
