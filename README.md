@@ -168,7 +168,7 @@ applied-ai-system-project/
 ## 6. Setup (Windows PowerShell)
 
 ```powershell
-git clone <your-repo-url>
+git clone https://github.com/lajoni1000/applied-ai-system-project.git
 cd applied-ai-system-project
 
 python -m venv .venv
@@ -211,56 +211,199 @@ If Gemini is **unavailable** — missing/invalid API key, network error, or an e
 
 > The explanation text shown below is the **deterministic fallback** — genuine, reproducible output from `build_fallback_explanation`. When a valid Gemini key/model is configured, an AI-generated explanation replaces it; the recommendations themselves are identical either way.
 
-### Profile A — EDM / uplifting / 0.95 (not acoustic)
+(.venv) PS C:\Users\hanny\OneDrive\Documentos\Foundations of AI Engineering\applied-ai-system-project> python -m src.main
 
-| Rank | Song | Artist | Score |
-|-----:|------|--------|------:|
-| 1 | Voltage Rising | Pulsewave | 4.00 |
-| 2 | Gym Hero | Max Pulse | 0.98 |
-| 3 | Iron Verdict | Ashen Crown | 0.97 |
-| 4 | Storm Runner | Voltline | 0.96 |
-| 5 | Midnight Circuit | Bassline Ghost | 0.95 |
+============================================================
+PROFILE: 1. High-energy (aligned preferences)
+============================================================
+Profile:
+  Favorite Genre: edm
+  Favorite Mood: uplifting
+  Target Energy: 0.95
+  Likes Acoustic: NO
 
-```
-Top recommendation: "Voltage Rising" by Pulsewave (score 4.00). It fits because its
-genre (edm) matches your favorite genre, its mood (uplifting) matches your preferred
-mood, its energy (0.95) is close to your target energy (0.95). Other strong matches
-include "Gym Hero" by Max Pulse, "Iron Verdict" by Ashen Crown.
-```
+  1. Voltage Rising - Pulsewave
+     Score: 4.00
+       - +2.0 genre match (edm)
+       - +1.0 mood match (uplifting)
+       - +1.00 energy match
 
-### Profile B — Lofi / chill / 0.35 (acoustic)
+  2. Gym Hero - Max Pulse
+     Score: 0.98
+       - +0.98 energy match
 
-| Rank | Song | Artist | Score |
-|-----:|------|--------|------:|
-| 1 | Library Rain | Paper Lanterns | 4.50 |
-| 2 | Midnight Coding | LoRoom | 4.43 |
-| 3 | Focus Flow | LoRoom | 3.45 |
-| 4 | Spacewalk Thoughts | Orbit Bloom | 2.43 |
-| 5 | Coffee Shop Stories | Slow Stereo | 1.48 |
+  3. Iron Verdict - Ashen Crown
+     Score: 0.97
+       - +0.97 energy match
 
-```
-Top recommendation: "Library Rain" by Paper Lanterns (score 4.50). It fits because its
-genre (lofi) matches your favorite genre, its mood (chill) matches your preferred mood,
-its energy (0.35) is close to your target energy (0.35), and it is acoustic, which you
-prefer. Other strong matches include "Midnight Coding" by LoRoom, "Focus Flow" by LoRoom.
-```
+  4. Storm Runner - Voltline
+     Score: 0.96
+       - +0.96 energy match
 
-### Profile C — R&B / romantic / 0.48 (not acoustic)
+  5. Midnight Circuit - Bassline Ghost
+     Score: 0.95
+       - +0.95 energy match
 
-| Rank | Song | Artist | Score |
-|-----:|------|--------|------:|
-| 1 | Velvet Hours | Silk Avenue | 4.00 |
-| 2 | Dust and Diesel | Red Clay Road | 0.96 |
-| 3 | Midnight Coding | LoRoom | 0.94 |
-| 4 | Focus Flow | LoRoom | 0.92 |
-| 5 | Island Time | Palm Riddim | 0.92 |
+AI EXPLANATION
+------------------------------------------------------------
+  Welcome! I picked these songs to match your love for high energy, non-
+  acoustic tracks, led by your top recommendation, "Voltage Rising" by
+  Pulsewave. It completely aligns with your preferences, delivering an
+  uplifting EDM vibe with high energy and no acoustic elements.   To match
+  your focus on high energy without acoustic sounds, the rest of the list
+  brings non-acoustic options across pop, metal, rock, and drum and bass.
+  Tracks like "Gym Hero" by Max Pulse, "Iron Verdict" by Ashen Crown, "Storm
+  Runner" by Voltline, and "Midnight Circuit" by Bassline Ghost all deliver
+  the high energy you are looking for!
 
-```
-Top recommendation: "Velvet Hours" by Silk Avenue (score 4.00). It fits because its
-genre (r&b) matches your favorite genre, its mood (romantic) matches your preferred
-mood, its energy (0.48) is close to your target energy (0.48). Other strong matches
-include "Dust and Diesel" by Red Clay Road, "Midnight Coding" by LoRoom.
-```
+
+============================================================
+PROFILE: 2. Low-energy / chill (with acoustic bonus)
+============================================================
+Profile:
+  Favorite Genre: lofi
+  Favorite Mood: chill
+  Target Energy: 0.35
+  Likes Acoustic: YES
+
+  1. Library Rain - Paper Lanterns
+     Score: 4.50
+       - +2.0 genre match (lofi)
+       - +1.0 mood match (chill)
+       - +1.00 energy match
+       - +0.5 acoustic bonus
+
+  2. Midnight Coding - LoRoom
+     Score: 4.43
+       - +2.0 genre match (lofi)
+       - +1.0 mood match (chill)
+       - +0.93 energy match
+       - +0.5 acoustic bonus
+
+  3. Focus Flow - LoRoom
+     Score: 3.45
+       - +2.0 genre match (lofi)
+       - +0.95 energy match
+       - +0.5 acoustic bonus
+
+  4. Spacewalk Thoughts - Orbit Bloom
+     Score: 2.43
+       - +1.0 mood match (chill)
+       - +0.93 energy match
+       - +0.5 acoustic bonus
+
+  5. Coffee Shop Stories - Slow Stereo
+     Score: 1.48
+       - +0.98 energy match
+       - +0.5 acoustic bonus
+
+AI EXPLANATION
+------------------------------------------------------------
+  Hello there! These song recommendations are a wonderful fit for your
+  taste. Our top recommendation, "Library Rain" by Paper Lanterns, is an
+  ideal match because it brings together your favorite lofi genre, a chill
+  mood, acoustic warmth, and your exact target energy level.   The rest of
+  the playlist keeps those great vibes going! Tracks like "Midnight Coding"
+  and "Focus Flow" by LoRoom give you more of the lofi sound and acoustic
+  feel you love. Meanwhile, "Spacewalk Thoughts" by Orbit Bloom and "Coffee
+  Shop Stories" by Slow Stereo complement your list with acoustic touches,
+  offering additional chill, ambient, relaxed, and jazz styles to enjoy.
+
+
+============================================================
+PROFILE: 3. Different genre and mood (r&b / romantic)
+============================================================
+Profile:
+  Favorite Genre: r&b
+  Favorite Mood: romantic
+  Target Energy: 0.48
+  Likes Acoustic: NO
+
+  1. Velvet Hours - Silk Avenue
+     Score: 4.00
+       - +2.0 genre match (r&b)
+       - +1.0 mood match (romantic)
+       - +1.00 energy match
+
+  2. Dust and Diesel - Red Clay Road
+     Score: 0.96
+       - +0.96 energy match
+
+  3. Midnight Coding - LoRoom
+     Score: 0.94
+       - +0.94 energy match
+
+  4. Focus Flow - LoRoom
+     Score: 0.92
+       - +0.92 energy match
+
+  5. Island Time - Palm Riddim
+     Score: 0.92
+       - +0.92 energy match
+
+AI EXPLANATION
+------------------------------------------------------------
+  Hello there! I’ve put together a playlist tailored just for you. Your top
+  recommendation, "Velvet Hours", is an absolute match for your taste. It
+  brings you the smooth R&B genre and romantic mood you adore, perfectly
+  captured in a non-acoustic track that hits your ideal energy level.   The
+  remaining selections, including "Dust and Diesel", "Midnight Coding",
+  "Focus Flow", and "Island Time", all share a very similar energy level to
+  keep your queue balanced. They offer a touch of variety across country,
+  lofi, and reggae genres, blending sad, chill, focused, and playful moods
+  with both acoustic and non-acoustic sounds. I hope you love this mix!
+
+
+============================================================
+PROFILE: 4a. ADVERSARIAL: conflicting genre vs mood (metal / happy)
+============================================================
+Profile:
+  Favorite Genre: metal
+  Favorite Mood: happy
+  Target Energy: 0.9
+  Likes Acoustic: NO
+
+  1. Iron Verdict - Ashen Crown
+     Score: 2.92
+       - +2.0 genre match (metal)
+       - +0.92 energy match
+
+  2. Sunrise City - Neon Echo
+     Score: 1.92
+       - +1.0 mood match (happy)
+       - +0.92 energy match
+
+  3. Rooftop Lights - Indigo Parade
+     Score: 1.86
+       - +1.0 mood match (happy)
+       - +0.86 energy match
+
+  4. Midnight Circuit - Bassline Ghost
+     Score: 1.00
+       - +1.00 energy match
+
+  5. Storm Runner - Voltline
+     Score: 0.99
+       - +0.99 energy match
+
+AI EXPLANATION
+------------------------------------------------------------
+  "Iron Verdict" takes the top spot for you because it delivers the non-
+  acoustic metal sound you love with high energy. To match your preference
+  for happy moods while keeping things energetic and strictly non-acoustic,
+  we also included tracks like "Sunrise City" and "Rooftop Lights" to bring
+  bright, happy vibes to your playlist. For even more high-energy, non-
+  acoustic options, "Midnight Circuit" and "Storm Runner" round out the list
+  with drum and bass and rock styles. Altogether, these songs highlight your
+  favorite metal genre, non-acoustic instrumentation, lively energy, and
+  cheerful moods!
+
+
+============================================================
+PROFILE: 4b. EDGE CASE: out-of-range target_energy (1.5)
+============================================================
+validation failed: target_energy must be between 0.0 and 1.0, got 1.5
+  [SKIPPED] Invalid profile: target_energy must be between 0.0 and 1.0, got 1.5
 
 ---
 
