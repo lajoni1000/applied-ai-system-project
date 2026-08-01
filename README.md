@@ -33,86 +33,10 @@ Everything below is implemented and tested in this repository:
 
 ## 4. Architecture Overview
 
-```mermaid
-flowchart TD
-    %% ===== INPUT LAYER =====
-    subgraph INPUT["🎧 Input Layer"]
-        A["User Preferences<br/>(genre, mood, energy, likes_acoustic)"]
-        B{"Input Validation<br/>required fields · numeric ranges 0–1"}
-        ERR["⛔ Validation Error Message<br/>reject invalid input (e.g. energy = 1.5)"]
-        C["User Profile Normalization<br/>lowercase · trim · standardize values"]
-        A --> B
-        B -- "invalid input" --> ERR
-        B -- "valid input" --> C
-    end
+![Applied AI Music Recommender architecture](diagrams/architecture.png)
 
-    %% ===== RETRIEVAL / RAG =====
-    subgraph RETRIEVAL["🔎 Retrieval & Ranking (RAG Retriever)"]
-        DB[("Song Catalog<br/>data/songs.csv")]
-        D["Retrieval & Scoring Engine<br/>score_song(): genre · mood · energy · acoustic"]
-        E["Ranking<br/>sort by score (desc)"]
-        F["Top-K Selection<br/>k = 5"]
-        DB --> D --> E --> F
-    end
-
-    C --> D
-
-    %% ===== EXPLANATION / LLM =====
-    subgraph EXPLAIN["🤖 Explanation Generation (RAG + Guardrails)"]
-        G["Build LLM Context<br/>retrieved song facts only"]
-        H["LLM Explanation Generator<br/>Configured LLM API"]
-        I{"Explanation Guardrail<br/>grounded? · non-empty? · no hallucinated attributes?"}
-        FB["Deterministic Fallback<br/>reasons from score_song()"]
-        G --> H
-        H -- "successful response" --> I
-        H -- "API failure / unavailable" --> FB
-        I -- "invalid / ungrounded" --> FB
-    end
-
-    F --> G
-    F -. "reasons available for fallback" .-> FB
-
-    %% ===== OUTPUT =====
-    I -- "valid & grounded" --> OUT["✅ Final Recommendation Output<br/>Top-K songs + explanation"]
-    FB --> OUT
-
-    %% ===== LOGGING (cross-cutting) =====
-    LOG["📝 Logging<br/>load · validation · retrieval · generation · guardrail · fallback"]
-    B -.-> LOG
-    D -.-> LOG
-    F -.-> LOG
-    H -.-> LOG
-    I -.-> LOG
-    FB -.-> LOG
-
-    %% ===== EVALUATION (reliability harness) =====
-    EVAL["🧪 Evaluation Script<br/>evaluate.py · fixed profiles · pass/fail summary"]
-    EVAL -. "verifies input validation" .-> B
-    EVAL -. "verifies recommendation consistency" .-> D
-    EVAL -. "verifies guardrail behavior" .-> I
-    EVAL -. "verifies fallback behavior" .-> FB
-
-    %% ===== STYLING =====
-    classDef input fill:#e3f2fd,stroke:#1565c0,color:#0d1b2a;
-    classDef retrieval fill:#e8f5e9,stroke:#2e7d32,color:#0d1b2a;
-    classDef llm fill:#fff3e0,stroke:#ef6c00,color:#0d1b2a;
-    classDef guard fill:#fce4ec,stroke:#c2185b,color:#0d1b2a;
-    classDef fallback fill:#f3e5f5,stroke:#6a1b9a,color:#0d1b2a;
-    classDef output fill:#e0f7fa,stroke:#00838f,color:#0d1b2a;
-    classDef ops fill:#eceff1,stroke:#455a64,color:#0d1b2a;
-    classDef store fill:#fffde7,stroke:#f9a825,color:#0d1b2a;
-    classDef error fill:#ffebee,stroke:#c62828,color:#0d1b2a;
-
-    class A,C input;
-    class B input;
-    class ERR error;
-    class D,E,F retrieval;
-    class G,H llm;
-    class I guard;
-    class FB fallback;
-    class OUT output;
-    class LOG,EVAL ops;
-    class DB store;
+The editable Mermaid source is available at
+[`diagrams/architecture.mmd`](diagrams/architecture.mmd).
 ```
 
 **System flow in plain English:**
